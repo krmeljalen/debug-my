@@ -78,6 +78,17 @@ def get_memory_stats():
     return memory_data
 
 
+def get_paging_stats():
+    paging_data = {"pages_in": 0, "pages_out": 0}
+    with open("/proc/vmstat", "r") as f:
+        for line in f:
+            if "pswpin" in line:
+                paging_data["pages_in"] = int(line.split()[1])
+            elif "pswpout" in line:
+                paging_data["pages_out"] = int(line.split()[1])
+    return paging_data
+
+
 #
 # Report functions
 #
@@ -119,6 +130,7 @@ def report_cpu_usage():
 
 def report_cpu_performance():
     cpu_performance_stats = get_cpu_performance()
+
     # IO Wait
     if cpu_performance_stats["cpu_times"].iowait > cpu_iowait_threshold_pct:
         warning(
@@ -126,6 +138,7 @@ def report_cpu_performance():
                 cpu_performance_stats["cpu_times"].iowait, cpu_iowait_threshold_pct
             )
         )
+
     # Steal time
     if cpu_performance_stats["cpu_times"].steal > 1:
         warning(
@@ -133,14 +146,14 @@ def report_cpu_performance():
                 cpu_performance_stats["cpu_times"].steal, cpu_steal_threshold_pct
             )
         )
-    # Per second stats
-    stats_1 = get_cpu_performance()
+
+    cpu_stats_1 = get_cpu_performance()
     time.sleep(1)
-    stats_2 = get_cpu_performance()
+    cpu_stats_2 = get_cpu_performance()
 
     # Context switches
     ctx_switches_per_second = (
-        stats_2["cpu_stats"].ctx_switches - stats_1["cpu_stats"].ctx_switches
+        cpu_stats_2["cpu_stats"].ctx_switches - cpu_stats_1["cpu_stats"].ctx_switches
     )
     if ctx_switches_per_second > cpu_ctx_switches_threshold:
         warning(
@@ -151,7 +164,7 @@ def report_cpu_performance():
 
     # Interrupts
     interrupts_per_second = (
-        stats_2["cpu_stats"].interrupts - stats_1["cpu_stats"].interrupts
+        cpu_stats_2["cpu_stats"].interrupts - cpu_stats_1["cpu_stats"].interrupts
     )
     if interrupts_per_second > cpu_interrupts_threshold:
         warning(
@@ -167,6 +180,8 @@ def report_cpu_performance():
 
 def report_memory_usage():
     memory_stats = get_memory_stats()
+
+    # Memory usage
     available_mem_pct = round(
         memory_stats["memory_usage"].available
         / memory_stats["memory_usage"].total
@@ -178,6 +193,7 @@ def report_memory_usage():
                 available_mem_pct, memory_available_threshold
             )
         )
+
     # Swap usage
     if memory_stats["swap_usage"].used > swap_usage_threshold:
         warning(
@@ -186,6 +202,11 @@ def report_memory_usage():
                 swap_usage_threshold,
             )
         )
+
+    # Memory paging
+    paging_stats_1 = get_paging_stats()
+    time.sleep(1)
+    paging_stats_2 = get_paging_stats()
 
 
 def main():
@@ -200,9 +221,6 @@ def main():
     # Disk
 
     # Network
-
-    # Other
-
 
 if __name__ == "__main__":
     main()
