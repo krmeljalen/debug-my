@@ -30,8 +30,10 @@ def header(msg):
     print("========================= {} =========================".format(msg))
 
 
-def warning(msg):
+def warning(msg, suggestion=None):
     print("[WARN] {}".format(msg))
+    if suggestion:
+        print("Suggestion:", suggestion)
 
 
 def info(msg):
@@ -95,58 +97,66 @@ def get_paging_stats():
 #
 
 
-def report_server_load():
+def report_cpu_performance():
+    # Load
     cpu_count = get_cpu_count()
     system_loads = get_system_load()
 
+    high_system_load = False
     for system_load in system_loads[:3]:
         if float(system_load) > cpu_count:
-            warning(
-                "Server load too high! ({} > {})".format(
-                    ", ".join(system_loads[:3]), cpu_count
-                )
-            )
-            return
+            high_system_load = True
 
-    # Default response
-    info("Server load is fine, below {} cpu cores.".format(cpu_count))
-
-
-def report_cpu_usage():
-    cpu_usage = get_cpu_usage()
-    if cpu_usage > cpu_usage_threshold_pct:
+    if high_system_load:
+        suggestion = (
+            "Upscale server or check which processes are taking most CPU or I/O time."
+        )
         warning(
-            "Server CPU usage is too high! ({}% > {}%)".format(
-                round(cpu_usage), cpu_usage_threshold_pct
-            )
+            f"Server load too high! ({', '.join(system_loads[:3])} > {cpu_count})",
+            suggestion,
         )
-        return
+    else:
+        info(f"Load is OK. ({system_load} < {cpu_count} CPU cores)")
 
-    info(
-        "Server CPU usage looks fine. ({}% < {}%)".format(
-            round(cpu_usage), cpu_usage_threshold_pct
+    # CPU usage
+    cpu_usage = get_cpu_usage()
+
+    if cpu_usage > cpu_usage_threshold_pct:
+        suggestion = "Upscale server or check which processes are taking most CPU time."
+        warning(
+            f"CPU usage is too high! ({round(cpu_usage)}% > {cpu_usage_threshold_pct}%)",
+            suggestion,
         )
-    )
+    else:
+        info(f"CPU usage is OK. ({round(cpu_usage)}% < {cpu_usage_threshold_pct}%)")
 
-
-def report_cpu_performance():
     cpu_performance_stats = get_cpu_performance()
 
     # IO Wait
     if cpu_performance_stats["cpu_times"].iowait > cpu_iowait_threshold_pct:
-        warning(
-            "IO wait is high! ({}% > {}%) This means you are doing a lot of network or disk operations that CPU is waiting to finish.".format(
-                cpu_performance_stats["cpu_times"].iowait, cpu_iowait_threshold_pct
-            )
+        suggestion = (
+            "There are processes doing a lot of disk or network operations. "
+            "Check disk and network metrics to determine the cause."
         )
+        warning(
+            f"IO wait is high! "
+            f"({cpu_performance_stats['cpu_times'].iowait}% > {cpu_iowait_threshold_pct}%) "
+            f"This means there are CPU-waiting disk or network operations.",
+            suggestion,
+        )
+    else:
+        info(f"IO wait is OK. ({cpu_performance_stats['cpu_times'].iowait}% < {cpu_iowait_threshold_pct}%)")
 
     # Steal time
-    if cpu_performance_stats["cpu_times"].steal > 1:
+    if cpu_performance_stats["cpu_times"].steal > cpu_steal_threshold_pct:
+        suggestion = "Other VMs on this host are affecting this server's CPU resources. Consider moving the VM to another host that is not overloaded."
         warning(
-            "CPU Steal detected! ({}% > {}%) Other VMs on particular host are affecting this server CPU resources. Try moving VM to another host that is not overloaded.".format(
-                cpu_performance_stats["cpu_times"].steal, cpu_steal_threshold_pct
-            )
+            f"CPU Steal time detected! "
+            f"({cpu_performance_stats['cpu_times'].steal}% > {cpu_steal_threshold_pct}%) ",
+            suggestion
         )
+    else:
+        info(f"CPU Steal time is OK. ({cpu_performance_stats['cpu_times'].steal}% < {cpu_steal_threshold_pct}%)")
 
     cpu_stats_1 = get_cpu_performance()
     time.sleep(1)
@@ -157,11 +167,14 @@ def report_cpu_performance():
         cpu_stats_2["cpu_stats"].ctx_switches - cpu_stats_1["cpu_stats"].ctx_switches
     )
     if ctx_switches_per_second > cpu_ctx_switches_threshold:
+        suggestion = "Consider pinning processes to specific cores or optimizing application logic."
         warning(
-            "CPU is doing high amount of context switching. (~{}/s > {}/s) Try pinning running processes to specific cores or spearate part of application logic to another server.".format(
-                ctx_switches_per_second, cpu_ctx_switches_threshold
-            )
+            f"CPU is experiencing a high number of context switches. "
+            f"({ctx_switches_per_second}/s > {cpu_ctx_switches_threshold}/s) ",
+            suggestion,
         )
+    else:
+        info(f"Context switching is OK. ({ctx_switches_per_second}/s < {cpu_ctx_switches_threshold}/s)")
 
     # Interrupts
     interrupts_per_second = (
@@ -169,42 +182,44 @@ def report_cpu_performance():
     )
     if interrupts_per_second > cpu_interrupts_threshold:
         warning(
-            "CPU is being often interrupted by hardware events. (~{}/s > {}/s)".format(
-                interrupts_per_second, cpu_interrupts_threshold
-            )
+            f"CPU is frequently interrupted by hardware events. "
+            f"({interrupts_per_second}/s > {cpu_interrupts_threshold}/s)"
         )
+    else:
+        info(f"CPU interrupts are OK. ({interrupts_per_second}/s < {cpu_interrupts_threshold}/s)")
 
-    # Cache hit ratio
-    # Cannot be retrieved without `perf` tool
     return
 
 
-def report_memory_usage():
+def report_memory_performance():
     memory_stats = get_memory_stats()
 
-    # Memory usage
-    available_mem_pct = round(
-        memory_stats["memory_usage"].available
-        / memory_stats["memory_usage"].total
-        * 100
-    )
+    # Memory
+    available_memory = memory_stats["memory_usage"].available
+    total_memory = memory_stats["memory_usage"].total
+    available_mem_pct = round(available_memory / total_memory * 100)
+
     if available_mem_pct < memory_available_threshold:
+        suggestion = "Lower the memory or add more memory to the server."
         warning(
-            "Available memory is low! ({}% < {}%)".format(
-                available_mem_pct, memory_available_threshold
-            )
+            f"Available memory is low! ({available_mem_pct}% < {memory_available_threshold}%)",
+            suggestion
         )
+    else:
+        info(f"Memory usage is OK. ({available_mem_pct}% > {memory_available_threshold}%)")
 
-    # Swap usage
-    if memory_stats["swap_usage"].used > swap_usage_threshold:
+    # Swap
+    swap_used = memory_stats["swap_usage"].used
+    if swap_used > swap_usage_threshold:
+        suggestion = "Consider adding more memory to the server."
         warning(
-            "Server was swapping at one point! ({} > {}) Consider adding more memory to the server.".format(
-                psutil._common.bytes2human(memory_stats["swap_usage"].used),
-                swap_usage_threshold,
-            )
+            f"Server was swapping at one point. ({psutil._common.bytes2human(swap_used)} > {swap_usage_threshold})",
+            suggestion
         )
+    else:
+        info(f"Swap usage is OK. ({psutil._common.bytes2human(swap_used)} < {psutil._common.bytes2human(swap_usage_threshold)})")
 
-    # Memory paging
+    # Paging
     paging_stats_1 = get_paging_stats()
     time.sleep(1)
     paging_stats_2 = get_paging_stats()
@@ -214,10 +229,10 @@ def report_memory_usage():
 
     if paging_in_per_sec > paging_threshold or paging_out_per_sec > paging_threshold:
         warning(
-            "Server is paging data. In: ({} > {}) Out: ({} > {}).".format(
-                paging_in_per_sec, paging_out_per_sec, paging_threshold
-            )
+            f"Server is paging data. In: ({paging_in_per_sec} > {paging_threshold}) Out: ({paging_out_per_sec} > {paging_threshold})"
         )
+    else:
+        info(f"Memory paging is OK. In: ({paging_in_per_sec} < {paging_threshold}) Out: ({paging_out_per_sec} < {paging_threshold})")
 
 
 def report_disk_performance():
@@ -234,12 +249,10 @@ def report_disk_performance():
 
 def main():
     header("CPU")
-    report_server_load()
-    report_cpu_usage()
     report_cpu_performance()
 
     header("MEMORY")
-    report_memory_usage()
+    report_memory_performance()
 
     header("DISK")
     report_disk_performance()
