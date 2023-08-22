@@ -19,6 +19,7 @@ cpu_interrupts_threshold = 2000  # Per second
 # Memory thresholds
 memory_available_threshold = 20  # Percent
 swap_usage_threshold = 0  # Bytes
+paging_threshold = 0  # Per second
 
 #
 # Stdout helpers
@@ -208,6 +209,28 @@ def report_memory_usage():
     time.sleep(1)
     paging_stats_2 = get_paging_stats()
 
+    paging_in_per_sec = paging_stats_2["pages_in"] - paging_stats_1["pages_in"]
+    paging_out_per_sec = paging_stats_2["pages_out"] - paging_stats_1["pages_out"]
+
+    if paging_in_per_sec > paging_threshold or paging_out_per_sec > paging_threshold:
+        warning(
+            "Server is paging data. In: ({} > {}) Out: ({} > {}).".format(
+                paging_in_per_sec, paging_out_per_sec, paging_threshold
+            )
+        )
+
+
+def report_disk_performance():
+    # Disk space usage
+    # IOPS
+    # Latency
+    # Queue length
+    # Avg Service time
+    # Cache usage
+    # Disk errors
+    # Utilization %
+    return
+
 
 def main():
     header("CPU")
@@ -218,9 +241,11 @@ def main():
     header("MEMORY")
     report_memory_usage()
 
-    # Disk
+    header("DISK")
+    report_disk_performance()
 
     # Network
+
 
 if __name__ == "__main__":
     main()
