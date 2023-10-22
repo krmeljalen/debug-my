@@ -18,6 +18,8 @@ spec:
       containers:
       - image: docker.blackbird.si/debug-my:latest
         name: debug-my
+      imagePullSecrets:
+      - name: docker-blackbird-si
       dnsConfig:
             options:
               - name: ndots
